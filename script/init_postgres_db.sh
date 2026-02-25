@@ -87,8 +87,13 @@ CREATE TABLE IF NOT EXISTS videos (
     video_title TEXT NOT NULL,
     published_at TIMESTAMP,
     video_category video_category_enum,
-    format_type video_format_enum
+    format_type video_format_enum,
+    duration INT
 );
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS duration INT;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS video_category video_category_enum;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS format_type video_format_enum;
+
 
 CREATE TABLE IF NOT EXISTS video_stats (
     video_id VARCHAR REFERENCES videos(video_id) ON DELETE CASCADE,
