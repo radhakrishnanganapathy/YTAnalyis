@@ -66,7 +66,7 @@ def get_videos(db_config: dict, channel_id=None):
     """
 
     if channel_id and channel_id != "All":
-        query += f" WHERE v.channel_id = '{channel_id}'"
+        query += f" WHERE v.channel_id = '{channel_id}' order by v.published_at desc"
 
     df = pd.read_sql(query, conn)
     conn.close()

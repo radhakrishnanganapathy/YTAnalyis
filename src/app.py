@@ -33,7 +33,7 @@ YT_API_KEY = os.getenv("YT_API_KEY")
 # SIDEBAR
 # ==============================
 st.sidebar.title("📊 YT Analytics")
-menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos"])
+menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos", "Comments"])
 
 # ==============================
 # DASHBOARD PAGE
@@ -345,3 +345,4 @@ if menu == "Videos":
             if st.button("Close"):
                 st.session_state.show_add_video = False
                 st.rerun()
+
