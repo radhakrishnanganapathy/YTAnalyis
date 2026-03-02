@@ -18,7 +18,9 @@ def get_channels(db_config: dict, category_filter=None):
                cs.subscribers_count,
                cs.total_video_count,
                cs.total_view_count,
-               cs.profile_picture
+               cs.profile_picture,
+               cs.banner_image,
+               cs.description
         FROM channels c
         LEFT JOIN channel_stats cs
         ON c.channel_id = cs.channel_id
@@ -30,6 +32,36 @@ def get_channels(db_config: dict, category_filter=None):
     df = pd.read_sql(query, conn)
     conn.close()
     return df
+
+def get_channel_details(channel_id: str, db_config: dict):
+    conn = psycopg2.connect(**db_config)
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = """
+        SELECT c.channel_id,
+               c.channel_name,
+               c.category,
+               c.published_at,
+               cs.subscribers_count,
+               cs.total_video_count,
+               cs.total_view_count,
+               cs.description,
+               cs.profile_picture,
+               cs.banner_image,
+               cs.keywords,
+               cs.last_scraped_at
+        FROM channels c
+        LEFT JOIN channel_stats cs
+        ON c.channel_id = cs.channel_id
+        WHERE c.channel_id = %s
+    """
+    
+    cursor.execute(query, (channel_id,))
+    details = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    return details
 
 def get_channel_categories(db_config: dict):
     conn = psycopg2.connect(**db_config)
@@ -128,6 +160,13 @@ def scrape_channel(
     banner_image = (
         branding.get("image", {}).get("bannerExternalUrl")
     )
+    
+    # Extract keywords/tags from branding settings
+    keywords_raw = branding.get("channel", {}).get("keywords", "")
+    # Keywords are often space-separated strings, possibly in quotes
+    import re
+    keywords = re.findall(r'"[^"]*"|\S+', keywords_raw)
+    keywords = [k.strip('"') for k in keywords]
 
     subscribers_count = int(stats.get("subscriberCount", 0))
     total_video_count = int(stats.get("videoCount", 0))
@@ -172,9 +211,10 @@ def scrape_channel(
                 description,
                 profile_picture,
                 banner_image,
+                keywords,
                 last_scraped_at
             )
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (channel_id)
             DO UPDATE SET
                 subscribers_count = EXCLUDED.subscribers_count,
@@ -183,6 +223,7 @@ def scrape_channel(
                 description = EXCLUDED.description,
                 profile_picture = EXCLUDED.profile_picture,
                 banner_image = EXCLUDED.banner_image,
+                keywords = EXCLUDED.keywords,
                 last_scraped_at = EXCLUDED.last_scraped_at
             """,
             (
@@ -193,6 +234,7 @@ def scrape_channel(
                 description,
                 profile_picture,
                 banner_image,
+                keywords,
                 datetime.utcnow()
             )
         )

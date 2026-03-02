@@ -29,7 +29,8 @@ DO $$ BEGIN
         'entertainment','cinema','politics','infotainment',
         'news','vlog','education','sports',
         'kids','animals','photography','adult',
-        'nature','cooking','art','others'
+        'nature','cooking','art','others','harrypotter','music','gaming','travel','food','health',
+        'books','serial'
     );
 EXCEPTION
     WHEN duplicate_object THEN null;

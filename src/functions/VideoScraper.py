@@ -125,6 +125,9 @@ def scrape_video_by_id(
     like_count = int(stats.get("likeCount", 0))
     comment_count = int(stats.get("commentCount", 0))
 
+    # Extract Hashtags from description
+    hashtags = re.findall(r'#(\w+)', description)
+
     # 3. Save to Database
     try:
         conn = psycopg2.connect(**db_config)
@@ -165,9 +168,9 @@ def scrape_video_by_id(
             """
             INSERT INTO video_stats (
                 video_id, view_count, comment_count, like_count, 
-                description, tags, last_scraped_at
+                description, tags, hashtags, last_scraped_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (video_id)
             DO UPDATE SET
                 view_count = EXCLUDED.view_count,
@@ -175,9 +178,10 @@ def scrape_video_by_id(
                 like_count = EXCLUDED.like_count,
                 description = EXCLUDED.description,
                 tags = EXCLUDED.tags,
+                hashtags = EXCLUDED.hashtags,
                 last_scraped_at = NOW()
             """,
-            (video_id, view_count, comment_count, like_count, description, tags)
+            (video_id, view_count, comment_count, like_count, description, tags, hashtags)
         )
 
         conn.commit()

@@ -1,5 +1,6 @@
 import streamlit as st
 import psycopg2
+from psycopg2.extras import RealDictCursor
 import pandas as pd
 from dotenv import load_dotenv
 from functions import ChannelScraper
@@ -46,6 +47,49 @@ if menu == "Dashboard":
 # CHANNEL PAGE
 # ==============================
 if menu == "Channels":
+    # Detail View Check
+    if "selected_channel_id" in st.session_state and st.session_state.selected_channel_id:
+        channel_id = st.session_state.selected_channel_id
+        details = ChannelScraper.get_channel_details(channel_id, db_config=DB_CONFIG)
+        
+        if details:
+            if st.button("⬅️ Back to Channels"):
+                st.session_state.selected_channel_id = None
+                st.rerun()
+            
+            # Refresh Button
+            if st.button("🔄 Refresh Data"):
+                with st.spinner("Refreshing..."):
+                    try:
+                        ChannelScraper.scrape_channel(
+                            api_key=YT_API_KEY,
+                            db_config=DB_CONFIG,
+                            channel_id=channel_id,
+                            category=details["category"]
+                        )
+                        st.success("Refreshed!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+            st.title(details["channel_name"])
+            
+            st.divider()
+            
+            # Description
+            st.subheader("Description")
+            st.write(details["description"])
+            
+            st.divider()
+            
+            # Keywords/Tags
+            if details["keywords"]:
+                st.subheader("Keywords")
+                # Display keywords as tags
+                tags_html = "".join([f'<span style="background-color: #444444; color: #ffffff; border-radius: 10px; padding: 5px 10px; margin: 5px; display: inline-block;">{k}</span>' for k in details["keywords"]])
+                st.markdown(tags_html, unsafe_allow_html=True)
+            
+            st.stop() # Skip list view
 
     col1, col2 = st.columns([8, 1])
 
@@ -77,7 +121,7 @@ if menu == "Channels":
     # ==============================
     # TABLE HEADER
     # ==============================
-    header_cols = st.columns([1, 3, 2, 2, 2, 2, 2, 1])
+    header_cols = st.columns([1, 3, 2, 2, 2, 2, 2, 1, 1])
 
     headers = [
         "Profile",
@@ -87,7 +131,8 @@ if menu == "Channels":
         "Videos",
         "Views",
         "Published",
-        "Action"
+        "View",
+        "Delete"
     ]
 
     for col, header in zip(header_cols, headers):
@@ -95,14 +140,12 @@ if menu == "Channels":
 
     st.divider()
 
-
-
     # ==============================
     # TABLE ROWS
     # ==============================
     for _, row in df.iterrows():
 
-        cols = st.columns([1, 3, 2, 2, 2, 2, 2, 1])
+        cols = st.columns([1, 3, 2, 2, 2, 2, 2, 1, 1])
 
         # Profile Picture
         if row["profile_picture"]:
@@ -131,8 +174,13 @@ if menu == "Channels":
         # Published Date
         cols[6].write(row["published_at"])
 
+        # View Button
+        if cols[7].button("👁️", key=f"view_{row['channel_id']}"):
+            st.session_state.selected_channel_id = row['channel_id']
+            st.rerun()
+
         # Delete Button
-        if cols[7].button("🗑", key=f"delete_{row['channel_id']}"):
+        if cols[8].button("🗑", key=f"delete_{row['channel_id']}"):
             ChannelScraper.delete_channel(row["channel_id"], db_config=DB_CONFIG)
             st.success("Channel deleted successfully")
             st.rerun()
@@ -181,6 +229,58 @@ if menu == "Channels":
 # VIDEO PAGE
 # ==============================
 if menu == "Videos":
+    # Video Detail View
+    if "selected_video_id" in st.session_state and st.session_state.selected_video_id:
+        video_id = st.session_state.selected_video_id
+        
+        # We need a function to get video details
+        conn = psycopg2.connect(**DB_CONFIG)
+        curr = conn.cursor(cursor_factory=RealDictCursor)
+        curr.execute("""
+            SELECT v.*, vs.*, c.channel_name 
+            FROM videos v 
+            JOIN video_stats vs ON v.video_id = vs.video_id 
+            JOIN channels c ON v.channel_id = c.channel_id
+            WHERE v.video_id = %s
+        """, (video_id,))
+        v_details = curr.fetchone()
+        curr.close()
+        conn.close()
+        
+        if v_details:
+            if st.button("⬅️ Back to Videos"):
+                st.session_state.selected_video_id = None
+                st.rerun()
+            
+            st.title(v_details["video_title"])
+            
+            st.divider()
+            
+            # Description
+            st.subheader("Description")
+            st.text_area("Description", v_details["description"], height=400, disabled=True)
+            
+            st.divider()
+            
+            # Tags and Hashtags
+            col_tags, col_hash = st.columns(2)
+            with col_tags:
+                st.subheader("Tags")
+                if v_details["tags"]:
+                    tags_html = "".join([f'<span style="background-color: #01579b; color: #ffffff; border-radius: 10px; padding: 5px 10px; margin: 5px; display: inline-block;">{t}</span>' for t in v_details["tags"]])
+                    st.markdown(tags_html, unsafe_allow_html=True)
+                else:
+                    st.write("No tags")
+            
+            with col_hash:
+                st.subheader("Hashtags")
+                if v_details["hashtags"]:
+                    hash_html = "".join([f'<span style="background-color: #4a148c; color: #ffffff; border-radius: 10px; padding: 5px 10px; margin: 5px; display: inline-block;">{h}</span>' for h in v_details["hashtags"]])
+                    st.markdown(hash_html, unsafe_allow_html=True)
+                else:
+                    st.write("No hashtags")
+            
+            st.stop()
 
     col1, col2 = st.columns([8, 1])
 
@@ -216,7 +316,7 @@ if menu == "Videos":
     # ==============================
     # TABLE HEADER
     # ==============================
-    header_cols = st.columns([4, 1, 2, 1, 1, 1, 1, 1, 2, 1])
+    header_cols = st.columns([4, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1])
 
     headers = [
         "Video Title",
@@ -228,6 +328,7 @@ if menu == "Videos":
         "Likes",
         "Comments",
         "Published",
+        "View",
         "Action"
     ]
 
@@ -240,7 +341,7 @@ if menu == "Videos":
     # TABLE ROWS
     # ==============================
     for _, row in df.iterrows():
-        cols = st.columns([4, 1, 2, 1, 1, 1, 1, 1, 2, 1])
+        cols = st.columns([4, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1])
         
         cols[0].write(row["video_title"])
         cols[1].write(row["video_category"])
@@ -258,7 +359,12 @@ if menu == "Videos":
         cols[7].write(f"{int(row['comment_count'] or 0):,}")
         cols[8].write(row["published_at"].strftime("%Y-%m-%d %H:%M:%S") if row["published_at"] else "-")
         
-        if cols[9].button("🗑", key=f"del_vid_{row['video_id']}"):
+        # View Button
+        if cols[9].button("👁️", key=f"v_view_{row['video_id']}"):
+            st.session_state.selected_video_id = row['video_id']
+            st.rerun()
+
+        if cols[10].button("🗑", key=f"del_vid_{row['video_id']}"):
             # Add a delete function in VideoScraper if needed, or just run query
             msg = st.empty()
             try:
