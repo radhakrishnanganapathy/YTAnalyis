@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from functions import ChannelScraper
 from functions import VideoScraper
+from functions import CommentScraper
 import os
 load_dotenv()
 
@@ -452,3 +453,82 @@ if menu == "Videos":
                 st.session_state.show_add_video = False
                 st.rerun()
 
+# ==============================
+# COMMENTS PAGE
+# ==============================
+if menu == "Comments":
+    st.title("Comments")
+    
+    # 1. Scraping Section
+    with st.expander("➕ Scrape Comments", expanded=not st.session_state.get("show_comments_list", True)):
+        with st.form("scrape_comments_form"):
+            col1, col2, col3 = st.columns([2, 1, 1])
+            video_id_input = col1.text_input("Enter Video ID")
+            max_pages = col2.number_input("Max Pages", min_value=1, value=1)
+            max_results_per_page = col3.number_input("Max Results / Page", min_value=1, value=20)
+            
+            submit_scrape = st.form_submit_button("Start Scraping")
+            
+            if submit_scrape:
+                if not video_id_input:
+                    st.error("Video ID is required")
+                else:
+                    with st.spinner("Scraping comments..."):
+                        try:
+                            scraped_count = CommentScraper.scrape_comments(
+                                api_key=YT_API_KEY,
+                                db_config=DB_CONFIG,
+                                video_id=video_id_input,
+                                max_pages=max_pages,
+                                max_results_per_page=max_results_per_page
+                            )
+                            st.success(f"Successfully scraped {scraped_count} comments!")
+                            st.session_state.show_comments_list = True
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error scraping comments: {str(e)}")
+
+    # 2. Filter Section
+    st.divider()
+    
+    # Selection for filtering by video
+    # We can get a list of videos that have comments in our DB
+    conn = psycopg2.connect(**DB_CONFIG)
+    curr = conn.cursor()
+    curr.execute("SELECT DISTINCT v.video_id, v.video_title FROM comments c JOIN videos v ON c.video_id = v.video_id")
+    videos_with_comments = curr.fetchall()
+    curr.close()
+    conn.close()
+    
+    video_options = {"All Videos": None}
+    for vid_id, vid_title in videos_with_comments:
+        video_options[vid_title] = vid_id
+        
+    selected_video_title = st.selectbox("View Comments for Video:", list(video_options.keys()))
+    selected_video_id = video_options[selected_video_title]
+    
+    # 3. List Comments
+    comments_df = CommentScraper.get_comments(DB_CONFIG, video_id=selected_video_id)
+    
+    st.write(f"Showing **{len(comments_df)}** comments")
+    
+    if not comments_df.empty:
+        # Table Header
+        header_cols = st.columns([1, 2, 4, 1, 1, 2])
+        headers = ["Username", "Video", "Comment", "Likes", "Replies", "Published At"]
+        for col, h in zip(header_cols, headers):
+            col.markdown(f"**{h}**")
+        st.divider()
+        
+        # Table Rows
+        for _, row in comments_df.iterrows():
+            cols = st.columns([1, 2, 4, 1, 1, 2])
+            cols[0].write(row["user_name"])
+            cols[1].write(row["video_title"])
+            cols[2].write(row["comment_text"])
+            cols[3].write(f"{row['like_count']:,}")
+            cols[4].write(f"{row['reply_count']:,}")
+            cols[5].write(row["comment_published_at"].strftime("%Y-%m-%d %H:%M") if row["comment_published_at"] else "-")
+            st.divider()
+    else:
+        st.info("No comments found for the selected filter.")

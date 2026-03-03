@@ -116,8 +116,11 @@ CREATE TABLE IF NOT EXISTS comments (
     comment_id VARCHAR PRIMARY KEY,
     video_id VARCHAR REFERENCES videos(video_id) ON DELETE CASCADE,
     user_id VARCHAR,
+    user_name TEXT,
     comment_text TEXT,
     comment_published_at TIMESTAMP,
+    like_count BIGINT,
+    reply_count BIGINT,
     scraped_at TIMESTAMP
 );
 
