@@ -42,7 +42,7 @@ menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos", "Comments"])
 # ==============================
 if menu == "Dashboard":
     st.title("Dashboard")
-    st.info("Welcome to YouTube Analytics Platform 🚀")
+    st.info("Welcome to YouTube Analytics Platform , Lets Explore the YT 🚀")
 
 # ==============================
 # CHANNEL PAGE
