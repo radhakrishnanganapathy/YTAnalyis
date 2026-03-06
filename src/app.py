@@ -35,7 +35,7 @@ YT_API_KEY = os.getenv("YT_API_KEY")
 # SIDEBAR
 # ==============================
 st.sidebar.title("📊 YT Analytics")
-menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos", "Comments"])
+menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos", "Comments", "Replays"])
 
 # ==============================
 # DASHBOARD PAGE
@@ -514,21 +514,103 @@ if menu == "Comments":
     
     if not comments_df.empty:
         # Table Header
-        header_cols = st.columns([1, 2, 4, 1, 1, 2])
-        headers = ["Username", "Video", "Comment", "Likes", "Replies", "Published At"]
+        header_cols = st.columns([1, 2, 2, 4, 1, 1, 2])
+        headers = ["Username", "Comment ID", "Video", "Comment", "Likes", "Replies", "Published At"]
         for col, h in zip(header_cols, headers):
             col.markdown(f"**{h}**")
         st.divider()
         
         # Table Rows
         for _, row in comments_df.iterrows():
-            cols = st.columns([1, 2, 4, 1, 1, 2])
+            cols = st.columns([1, 2, 2, 4, 1, 1, 2])
             cols[0].write(row["user_name"])
-            cols[1].write(row["video_title"])
-            cols[2].write(row["comment_text"])
-            cols[3].write(f"{row['like_count']:,}")
-            cols[4].write(f"{row['reply_count']:,}")
-            cols[5].write(row["comment_published_at"].strftime("%Y-%m-%d %H:%M") if row["comment_published_at"] else "-")
+            cols[1].code(row["comment_id"])
+            cols[2].write(row["video_title"])
+            cols[3].write(row["comment_text"])
+            cols[4].write(f"{row['like_count']:,}")
+            cols[5].write(f"{row['reply_count']:,}")
+            cols[6].write(row["comment_published_at"].strftime("%Y-%m-%d %H:%M") if row["comment_published_at"] else "-")
             st.divider()
     else:
         st.info("No comments found for the selected filter.")
+
+# ==============================
+# REPLAYS PAGE
+# ==============================
+if menu == "Replays":
+    st.title("Reply Comments")
+    
+    # 1. Scraping Section
+    with st.expander("➕ Scrape Replies", expanded=True):
+        with st.form("scrape_replies_form"):
+            col1, col2, col3 = st.columns([2, 1, 1])
+            main_comment_id_input = col1.text_input("Enter Main Comment ID")
+            max_pages = col2.number_input("Max Pages", min_value=1, value=1)
+            max_results_per_page = col3.number_input("Max Results / Page", min_value=1, value=20)
+            
+            submit_scrape = st.form_submit_button("Start Scraping Replies")
+            
+            if submit_scrape:
+                if not main_comment_id_input:
+                    st.error("Main Comment ID is required")
+                else:
+                    with st.spinner("Scraping replies..."):
+                        try:
+                            scraped_count = CommentScraper.scrape_replies(
+                                api_key=YT_API_KEY,
+                                db_config=DB_CONFIG,
+                                main_comment_id=main_comment_id_input,
+                                max_pages=max_pages,
+                                max_results_per_page=max_results_per_page
+                            )
+                            st.success(f"Successfully scraped {scraped_count} replies!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error scraping replies: {str(e)}")
+
+    # 2. Filter Section
+    st.divider()
+    
+    # Selection for filtering by parent comment
+    conn = psycopg2.connect(**DB_CONFIG)
+    curr = conn.cursor()
+    curr.execute("""
+        SELECT DISTINCT c.comment_id, LEFT(c.comment_text, 50) || '...' 
+        FROM comment_replies r 
+        JOIN comments c ON r.main_comment_id = c.comment_id
+    """)
+    comments_with_replies = curr.fetchall()
+    curr.close()
+    conn.close()
+    
+    parent_options = {"All Replies": None}
+    for c_id, c_text in comments_with_replies:
+        parent_options[f"{c_id} ({c_text})"] = c_id
+        
+    selected_parent_label = st.selectbox("View Replies for Comment:", list(parent_options.keys()))
+    selected_parent_id = parent_options[selected_parent_label]
+    
+    # 3. List Replies
+    replies_df = CommentScraper.get_replies(DB_CONFIG, main_comment_id=selected_parent_id)
+    
+    st.write(f"Showing **{len(replies_df)}** replies")
+    
+    if not replies_df.empty:
+        # Table Header
+        header_cols = st.columns([1, 2, 4, 4, 2])
+        headers = ["Username", "Video", "Parent Comment", "Reply text", "Published At"]
+        for col, h in zip(header_cols, headers):
+            col.markdown(f"**{h}**")
+        st.divider()
+        
+        # Table Rows
+        for _, row in replies_df.iterrows():
+            cols = st.columns([1, 2, 4, 4, 2])
+            cols[0].write(row["user_name"])
+            cols[1].write(row["video_title"])
+            cols[2].write(row["parent_comment"])
+            cols[3].write(row["reply_text"])
+            cols[4].write(row["reply_published_at"].strftime("%Y-%m-%d %H:%M") if row["reply_published_at"] else "-")
+            st.divider()
+    else:
+        st.info("No replies found for the selected filter.")
