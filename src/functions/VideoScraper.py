@@ -72,6 +72,50 @@ def get_videos(db_config: dict, channel_id=None):
     conn.close()
     return df
 
+def get_publication_stats(db_config: dict, channel_id: str, days: int):
+    """Retrieves video publication counts grouped by date."""
+    conn = psycopg2.connect(**db_config)
+    
+    # We use a date series to ensure we have entries for every day even if 0 videos
+    query = f"""
+        WITH date_range AS (
+            SELECT generate_series(
+                CURRENT_DATE - INTERVAL '{days} days',
+                CURRENT_DATE,
+                '1 day'::interval
+            )::date AS d
+        )
+        SELECT 
+            dr.d as pub_date,
+            COUNT(v.video_id) as video_count
+        FROM date_range dr
+        LEFT JOIN videos v ON dr.d = DATE(v.published_at) AND v.channel_id = %s
+        GROUP BY dr.d
+        ORDER BY dr.d ASC
+    """
+    
+    df = pd.read_sql(query, conn, params=(channel_id,))
+    conn.close()
+    return df
+
+def get_publication_time_data(db_config: dict, channel_id: str, days: int):
+    """Retrieves video publication dates and times (fractional hours) for scatter plot."""
+    conn = psycopg2.connect(**db_config)
+    
+    query = f"""
+        SELECT 
+            DATE(published_at) as pub_date,
+            EXTRACT(HOUR FROM published_at) + (EXTRACT(MINUTE FROM published_at) / 60.0) as pub_time
+        FROM videos
+        WHERE channel_id = %s
+          AND published_at >= CURRENT_DATE - INTERVAL '{days} days'
+        ORDER BY published_at ASC
+    """
+    
+    df = pd.read_sql(query, conn, params=(channel_id,))
+    conn.close()
+    return df
+
 def scrape_video_by_id(
     *,
     video_id: str,

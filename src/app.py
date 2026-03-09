@@ -35,7 +35,7 @@ YT_API_KEY = os.getenv("YT_API_KEY")
 # SIDEBAR
 # ==============================
 st.sidebar.title("📊 YT Analytics")
-menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos", "Comments", "Replays"])
+menu = st.sidebar.radio("Menu", ["Dashboard", "Channels","Videos", "Comments", "Replays", "Analysis"])
 
 # ==============================
 # DASHBOARD PAGE
@@ -614,3 +614,71 @@ if menu == "Replays":
             st.divider()
     else:
         st.info("No replies found for the selected filter.")
+
+# ==============================
+# ANALYSIS PAGE
+# ==============================
+if menu == "Analysis":
+    st.title("📈 Channel Analysis")
+    
+    st.subheader("Video Publication Time Series")
+    
+    # Selection for channel
+    channel_dict = VideoScraper.select_channel_name(db_config=DB_CONFIG)
+    if not channel_dict:
+        st.warning("No channels found in database. Please add a channel first.")
+    else:
+        col1, col2 = st.columns(2)
+        
+        selected_channel_name = col1.selectbox(
+            "Select Channel",
+            list(channel_dict.keys())
+        )
+        
+        time_filter = col2.selectbox(
+            "Time Filter",
+            ["Last 7 Days", "One Month"]
+        )
+        
+        # Map time filter to days
+        days_map = {
+            "Last 7 Days": 7,
+            "One Month": 30
+        }
+        days = days_map[time_filter]
+        
+        channel_id = channel_dict[selected_channel_name]
+        
+        # Fetch data
+        time_data_df = VideoScraper.get_publication_time_data(DB_CONFIG, channel_id, days)
+        
+        if not time_data_df.empty:
+            # Metrics
+            total_videos = len(time_data_df)
+            unique_days = time_data_df['pub_date'].nunique()
+            
+            m1, m2 = st.columns(2)
+            m1.metric("Total Videos (Period)", total_videos)
+            m2.metric("Active Upload Days", unique_days)
+            
+            # Scatter Chart
+            st.divider()
+            st.write(f"Publication Time distribution for **{selected_channel_name}**")
+            
+            # We want X = pub_date, Y = pub_time
+            # Streamlit's st.scatter_chart is great for this
+            st.scatter_chart(
+                time_data_df,
+                x='pub_date',
+                y='pub_time',
+                size=100,
+                color="#FF0000" # YouTube Red
+            )
+            
+            st.caption("Y-axis represents the hour of the day (0-24).")
+            
+            # Breakdown Table
+            with st.expander("Show Raw Data"):
+                st.dataframe(time_data_df, use_container_width=True)
+        else:
+            st.info("No data available for the selected period.")
